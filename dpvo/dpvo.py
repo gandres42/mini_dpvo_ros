@@ -12,7 +12,7 @@ from cv_bridge import CvBridge
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Pose, PoseArray
 from std_msgs.msg import Float32
-from scipy.spatial.transform import Rotation
+from scipy.spatial.transform import Rotation as R
 from mini_dpvo.dpvo import DPVO  # ty:ignore[unresolved-import]
 from mini_dpvo.config import cfg as base_cfg  # ty:ignore[unresolved-import]
 
@@ -28,6 +28,15 @@ VIDEO_TOPIC = _config['video_topic']
 # a post-BA edge counts as an inlier if its reprojection residual (network-res pixels)
 # is below this; tune against the raw error on /dpvo/ba_reproj_error
 INLIER_PX = 1.0
+
+# change of basis from the OpenCV optical convention (x right, y down, z forward)
+# to the ROS REP-103 convention (x forward, y left, z up): v_ros = CV_TO_ROS @ v_cv
+CV_TO_ROS = np.eye(4)
+CV_TO_ROS[:3, :3] = np.array([
+    [0.0, 0.0, 1.0],
+    [-1.0, 0.0, 0.0],
+    [0.0, -1.0, 0.0],
+])
 
 class DpvoNode(Node):
     def __init__(self):
@@ -54,7 +63,7 @@ class DpvoNode(Node):
     @torch.no_grad()
     def camera_cb(self, msg: Image):
         bgr = self.bridge.imgmsg_to_cv2(msg, 'bgr8')
-        bgr = cv2.resize(bgr, None, fx=DOWNSCALE, fy=DOWNSCALE, interpolation=cv2.INTER_AREA)
+        bgr = cv2.resize(bgr, None, fx=DOWNSCALE, fy=DOWNSCALE, interpolation=cv2.INTER_AREA) # pyrefly: ignore[bad-argument-type]
         h, w, _ = bgr.shape
         bgr = bgr[: h - h % 16, : w - w % 16]
 
@@ -91,13 +100,16 @@ class DpvoNode(Node):
         nonzero = poses[~(poses[:, :6] == 0).all(dim=1)]
         quat_pose = nonzero[-1].numpy(force=True)
         cam_T_world = np.eye(4)
-        cam_T_world[:3, :3] = Rotation.from_quat(quat_pose[3:]).as_matrix()
+        cam_T_world[:3, :3] = R.from_quat(quat_pose[3:]).as_matrix()
         cam_T_world[:3, 3] = quat_pose[:3]
         world_T_cam = np.linalg.inv(cam_T_world)
 
+        # re-express both the world frame and the camera body frame in ROS axes
+        world_T_cam = CV_TO_ROS @ world_T_cam @ CV_TO_ROS.T
+
         ros_pose = Pose()
         ros_pose.position.x, ros_pose.position.y, ros_pose.position.z = (float(v) for v in world_T_cam[:3, 3])
-        quat_xyzw = Rotation.from_matrix(world_T_cam[:3, :3]).as_quat()
+        quat_xyzw = R.from_matrix(world_T_cam[:3, :3]).as_quat()
         ros_pose.orientation.x, ros_pose.orientation.y, ros_pose.orientation.z, ros_pose.orientation.w = (
             float(v) for v in quat_xyzw
         )

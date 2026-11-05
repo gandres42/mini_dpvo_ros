@@ -1,7 +1,5 @@
-# network_path: /usr/local/src/mini-dpvo/checkpoints/dpvo.pth
-# dpvo_config_path: /usr/local/src/mini-dpvo/config/fast.yaml
-network_path: /home/gavin/fusion_ws/lib/mini-dpvo/checkpoints/dpvo.pth
-dpvo_config_path: /home/gavin/fusion_ws/lib/mini-dpvo/mini_dpvo/configs/fast.yaml
+network_path:     /usr/local/src/mini-dpvo/checkpoints/dpvo.pth
+dpvo_config_path: /usr/local/src/mini-dpvo/mini_dpvo/configs/fast.yaml
 fx: 1078.17559
 fy: 1076.46176
 cx: 1010.57086
